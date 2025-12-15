@@ -6,19 +6,32 @@
 #include <string.h>
 #include "time.h"
 
-static int64_t st_lUNIXTimeStamp = 0;
+
+/* å®æ—¶æ—¶é’Ÿ */
+volatile int64_t g_lTimestamp = 0;
+/* æ—¶åŒºï¼šé»˜è®¤ä¸œå…«åŒº */
+volatile static float g_fTimeUTC = 8.0f;
+
+/* åˆ¤æ–­æ˜¯å¦ä¸ºé—°å¹´ */
+#define YEAR_LEAP(year) ((((year) % 4)      != 0) ? 0 : \
+                         (((year) % 100)    != 0) ? 1 : \
+                         (((year) % 400)    != 0) ? 0 : \
+                         (((year) % 3200)   != 0) ? 1 : \
+                         (((year) % 172800) != 0) ? 0 : 1)
+/* è·å–å¹´ä»½å¤©æ•° */
+#define DAYS_OF_THE_YEAR(year) (YEAR_LEAP(year) == 1 ? 366 : 365)
+/* è·å–æœˆä»½å¤©æ•° */
 const static uint8_t st_ucMonthDays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+#define DAYS_OF_THE_MONTH(year, month) ((((month) == 2) && (YEAR_LEAP(year) == 1)) ? 29 : st_ucMonthDays[(month) - 1])
 
 
-
-/* ²ÌÀÕ¹«Ê½¼ÆËãĞÇÆÚ¼¸ Christian Zeller */
+/* è”¡å‹’å…¬å¼è®¡ç®—æ˜ŸæœŸå‡  Christian Zeller */
 uint8_t cTimeToWeek(int32_t iYear, uint8_t ucMonth, uint8_t ucDay)
 {
     int32_t iCentury = 0;
     int8_t cWeek = 0;
 
-
-    /* Èç¹ûÊÇ1¡¢2ÔÂ·İ£¬ÔòĞèÒª°ÑÔÂ·İµ±×÷ÊÇÉÏÄê¶ÈµÄ13¡¢14ÔÂ·İ */
+    /* å¦‚æœæ˜¯1ã€2æœˆä»½ï¼Œåˆ™éœ€è¦æŠŠæœˆä»½å½“ä½œæ˜¯ä¸Šå¹´åº¦çš„13ã€14æœˆä»½ */
     if(ucMonth <= 2)
     {
         iYear -= 1;
@@ -36,113 +49,125 @@ uint8_t cTimeToWeek(int32_t iYear, uint8_t ucMonth, uint8_t ucDay)
 
 /*
  * Return:      void
- * Parameters:  lStamp: UNIXÊ±¼ä´Á; ptypeTime:Ê±¼ä½á¹¹ÌåÖ¸Õë; cUTC: Ê±Çø£¨¶«Ê±ÇøÎªÕı¡¢Î÷Ê±ÇøÎª¸º£©
- * Description: °ÑUNIXÊ±¼ä´Á×ª»»³ÉÊ±¼ä½á¹¹Ìå
+ * Parameters:  lStamp: UNIXæ—¶é—´æˆ³; ptypeTime:æ—¶é—´ç»“æ„ä½“æŒ‡é’ˆ; cUTC: æ—¶åŒºï¼ˆä¸œæ—¶åŒºä¸ºæ­£ã€è¥¿æ—¶åŒºä¸ºè´Ÿï¼‰
+ * Description: æŠŠUNIXæ—¶é—´æˆ³è½¬æ¢æˆæ—¶é—´ç»“æ„ä½“
  */
-void vStampToTime(int64_t lStamp, TimeType *ptypeTime, int8_t cUTC)
+void vStampToTime(TimeType *ptypeTime, int64_t lStamp, float fUTC)
 {
-    int64_t lDaysNumber = 0;
-    int32_t lYearTemp = 1970;
-    uint8_t ucMonthTemp = 1;
+    int32_t iYear;
+    int8_t cMonth;
 
-    /* ¼ÓÈëÊ±ÇøÖµ */
-    lStamp += cUTC * 3600;
-    ptypeTime->cUTC = cUTC;
+    /* åŠ å…¥æ—¶åŒºå€¼ */
+    lStamp += (int64_t)(fUTC * 3600.0f);
+    ptypeTime->UTC = fUTC;
 
-	/* ¼õÈ¥È«²¿Äê·İµÄÕûÄêÌìÊı£¨1ÌìÓĞ86400Ãë£© */
-    for(lDaysNumber = lStamp / 86400; lDaysNumber >= 0; ++lYearTemp)
-        lDaysNumber -= DAYS_OF_THE_YEAR(lYearTemp);
+    if(lStamp >= 0)
+    {
+        /* è®¡ç®—å…¨éƒ¨å¹´ä»½çš„æ•´å¹´å¤©æ•°ï¼ˆ1å¤©æœ‰86400ç§’ï¼‰ */
+        for(iYear = 1969; lStamp >= 0; lStamp -= DAYS_OF_THE_YEAR(iYear) * 86400)
+            ++iYear;
 
-	/* ÉÏÃæÑ­»·¶à¼ÆËãÁË1Äê */
-    ptypeTime->year = lYearTemp - 1;
+        /* è®¡ç®—å½“å‰å¹´ä»½ä¸‹å…¨éƒ¨æœˆä»½çš„æ•´æœˆå¤©æ•° */
+        for(cMonth = 0, lStamp += DAYS_OF_THE_YEAR(iYear) * 86400; lStamp >= 0; lStamp -= DAYS_OF_THE_MONTH(iYear, cMonth) * 86400)
+            ++cMonth;
 
-	/* ¼ÓÉÏÉÏÃæÑ­»·¶à¼õÈ¥µÄ1Äê£¬¼õÈ¥µ±Ç°Äê·İÏÂÈ«²¿ÔÂ·İµÄÕûÔÂÌìÊı */
-    for(lDaysNumber += DAYS_OF_THE_YEAR(ptypeTime->year); lDaysNumber >= 0; ++ucMonthTemp)
-        lDaysNumber -= DAYS_OF_THE_MONTH(ptypeTime->year, ucMonthTemp);
+        /* åŠ ä¸Šä¸Šé¢å¾ªç¯å¤šå‡å»çš„1ä¸ªæœˆ */
+        lStamp += DAYS_OF_THE_MONTH(iYear, cMonth) * 86400;
+    }
+    else
+    {
+        /* è®¡ç®—å…¨éƒ¨å¹´ä»½çš„æ•´å¹´å¤©æ•°ï¼ˆ1å¤©æœ‰86400ç§’ï¼‰ */
+        for(iYear = 1970; lStamp < 0; lStamp += DAYS_OF_THE_YEAR(iYear) * 86400)
+            --iYear;
 
-	/* ÉÏÃæÑ­»·¶à¼ÆËãÁË1ÔÂ */
-    ptypeTime->month = ucMonthTemp - 1;
+        /* è®¡ç®—å½“å‰å¹´ä»½ä¸‹å…¨éƒ¨æœˆä»½çš„æ•´æœˆå¤©æ•° */
+        for(cMonth = 13, lStamp -= DAYS_OF_THE_YEAR(iYear) * 86400; lStamp < 0; lStamp += DAYS_OF_THE_MONTH(iYear, cMonth) * 86400)
+            --cMonth;
+    }
 
-	/* ¼ÓÉÏÉÏÃæÑ­»·¶à¼õÈ¥µÄ1ÔÂ */
-    lDaysNumber += DAYS_OF_THE_MONTH(ptypeTime->year, ptypeTime->month);
-
-	/* Ìì´Ó1¿ªÊ¼¼ÆÊı */
-    ptypeTime->day = lDaysNumber + 1;
-
+    ptypeTime->year = iYear;
+    ptypeTime->month = cMonth;
+    /* å¤©ä»1å¼€å§‹è®¡æ•° */
+    ptypeTime->day = lStamp / 86400 + 1;
+    lStamp = (lStamp % 86400) + 86400;
     ptypeTime->hour = lStamp / 3600 % 24;
-
     ptypeTime->minute = lStamp / 60 % 60;
-
     ptypeTime->second = lStamp % 60;
-
-	ptypeTime->week = cTimeToWeek(ptypeTime->year, ptypeTime->month, ptypeTime->day);
+    ptypeTime->week = cTimeToWeek(ptypeTime->year, ptypeTime->month, ptypeTime->day);
 }
 
 /*
- * Return:      UNIXÊ±¼ä´Á
- * Parameters:  ptypeTime:Ê±¼ä½á¹¹Ìå;
- * Description: °ÑÊ±¼ä½á¹¹Ìå×ª»»³ÉUNIXÊ±¼ä´Á
- */
-int64_t lTimeToStamp(TimeType typeTime)
+* Return:      UNIXæ—¶é—´æˆ³
+* Parameters:  ptypeTime:æ—¶é—´ç»“æ„ä½“;
+* Description: æŠŠæ—¶é—´ç»“æ„ä½“è½¬æ¢æˆUNIXæ—¶é—´æˆ³
+*/
+int64_t lTimeToStamp(TimeType *ptypeTime)
 {
-    int64_t lDaysNumber = 0, lStamp = 0;
-    int32_t lYearTemp = 1970;
-    uint8_t ucMonthTemp = 1;
+    int64_t lDays = 0, lStamp;
+    int32_t iYear;
+    int8_t cMonth;
 
-    for(lYearTemp = 1970; lYearTemp < typeTime.year; ++lYearTemp)
-        lDaysNumber += DAYS_OF_THE_YEAR(lYearTemp);
+    if(ptypeTime->year >= 1970)
+    {
+        for(iYear = 1970; iYear < ptypeTime->year; ++iYear)
+            lDays += DAYS_OF_THE_YEAR(iYear);
+    }
+    else
+    {
+        for(iYear = 1969; iYear >= ptypeTime->year; --iYear)
+            lDays -= DAYS_OF_THE_YEAR(iYear);
+    }
 
-    for(ucMonthTemp = 1; ucMonthTemp < typeTime.month; ++ucMonthTemp)
-        lDaysNumber += DAYS_OF_THE_MONTH(typeTime.year, ucMonthTemp);
+    for(cMonth = 1; cMonth < ptypeTime->month; ++cMonth)
+        lDays += DAYS_OF_THE_MONTH(ptypeTime->year, cMonth);
 
-    lDaysNumber += typeTime.day - 1;
+    lDays += ptypeTime->day - 1;
 
-    lStamp = lDaysNumber * 86400;
-    lStamp += typeTime.hour * 3600;
-    lStamp += typeTime.minute * 60;
-    lStamp += typeTime.second;
+    lStamp  = lDays * 86400;
+    lStamp += ptypeTime->hour * 3600;
+    lStamp += ptypeTime->minute * 60;
+    lStamp += ptypeTime->second;
 
-    /* ¼ÓÈë¼ÆËãÊ±ÇøÖµ */
-    lStamp -= typeTime.cUTC * 3600;
+    /* åŠ å…¥è®¡ç®—æ—¶åŒºå€¼ */
+    lStamp -= (int64_t)(ptypeTime->UTC * 3600.0f);
 
     return lStamp;
 }
 
-int64_t lTimeGetStamp(void)
+/* è®¾ç½®æ—¶é—´æˆ³ï¼šå•ä½us */
+int64_t lTimestampGet(void)
 {
-    return st_lUNIXTimeStamp;
+    return g_lTimestamp;
 }
 
-void vTimeSetStamp(int64_t lStamp)
+/* è·å–æ—¶é—´æˆ³ï¼šå•ä½us */
+void vTimestampSet(int64_t lStamp)
 {
-    st_lUNIXTimeStamp = lStamp;
+    g_lTimestamp = lStamp;
 }
 
-
-char *pcStampToTimeStrings(int64_t lStamp)
+/* æ—¶åŒºè®¾ç½® */
+void vTimeUTCSet(float fUTC)
 {
-    TimeType typeTime = {0};
-    static char cTimeStrings[16] = {0};
-
-    /* ¶«8Çø */
-    vStampToTime(lStamp, &typeTime, 8);
-
-    memset(cTimeStrings, 0, sizeof(cTimeStrings));
-    sprintf(cTimeStrings, "%02d:%02d:%02d", typeTime.hour, typeTime.minute, typeTime.second);
-
-    return cTimeStrings;
+    g_fTimeUTC = fUTC;
 }
 
-char *pcStampToDateStrings(int64_t lStamp)
+/* æ—¶åŒºè·å– */
+float fTimeUTCGet(void)
 {
-    TimeType typeTime = {0};
-    static char cDateStrings[16] = {0};
+    return g_fTimeUTC;
+}
 
-    /* ¶«8Çø */
-    vStampToTime(lStamp, &typeTime, 8);
-
+char *pcTimeToStrings(int64_t lStamp)
+{
+    static char cDateStrings[32] = {0};
+    TimeType typeTime;
+    
+    /* ä¸œ8åŒº */
+    vStampToTime(&typeTime, lStamp, 8.0f);
+    
     memset(cDateStrings, 0, sizeof(cDateStrings));
-    sprintf(cDateStrings, "%d/%02d/%02d", (int)typeTime.year, typeTime.month, typeTime.day);
-
+    sprintf(cDateStrings, "%d/%02d/%02d - %02d:%02d:%02d", (int)typeTime.year, typeTime.month, typeTime.day, typeTime.hour, typeTime.minute, typeTime.second);
+    
     return cDateStrings;
 }

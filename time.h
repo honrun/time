@@ -1,54 +1,38 @@
-#ifndef _DevicesTime_H_
-#define _DevicesTime_H_
 /*
- * Author: honrun
- */
-
+* Author: honrun
+*/
+#ifndef _Time_H_
+#define _Time_H_
 
 #include <stdint.h>
 
 
-
-/* »ÚƒÍ */
-#ifndef USER_LEAP_YEAR
-#define USER_LEAP_YEAR   1
-#endif // LEAP_YEAR
-
-/* ∆ΩƒÍ */
-#ifndef USER_COMMON_YEAR
-#define USER_COMMON_YEAR 0
-#endif // COMMON_YEAR
-
-
-/* ≈–∂œ «∑ÒŒ™»ÚƒÍ */
-#define YEAR_LEAP(year) (((((year) % 4 == 0) && ((year) % 100 != 0)) || (((year) % 400 == 0) && ((year) % 3200 != 0)) || ((year) % 172800 == 0)) ? USER_LEAP_YEAR : USER_COMMON_YEAR)
-/* ªÒ»°ƒÍ∑›ÃÏ ˝ */
-#define DAYS_OF_THE_YEAR(year) (YEAR_LEAP(year) == USER_LEAP_YEAR ? 366 : 365)
-/* ªÒ»°‘¬∑›ÃÏ ˝ */
-#define DAYS_OF_THE_MONTH(year, month) ((((month) == 2) && (YEAR_LEAP(year) == USER_LEAP_YEAR)) ? 29 : st_ucMonthDays[(month) - 1])
-
-
-
 typedef struct{
+    float UTC;
     int32_t year;
-    uint8_t month;
-    uint8_t day;
-    uint8_t hour;
-    uint8_t minute;
-    uint8_t second;
-	uint8_t week;
-    int8_t cUTC;
+    uint8_t month   : 4;
+    uint8_t day     : 5;
+    uint8_t hour    : 5;
+    uint8_t minute  : 6;
+    uint8_t second  : 6;
+    uint8_t week    : 3;
 }TimeType;
 
 
+/* Á≥ªÁªüËÆ°Êó∂Êó∂Âü∫Ôºå‰∏çÂèØÊõ¥Êîπ */
+extern volatile int64_t g_lTimeBase;
 
-void vStampToTime(int64_t lStamp, TimeType *ptypeTime, int8_t cUTC);
-int64_t lTimeToStamp(TimeType typeTime);
-int64_t lTimeGetStamp(void);
-void vTimeSetStamp(int64_t lStamp);
 
-char *pcStampToTimeStrings(int64_t lStamp);
-char *pcStampToDateStrings(int64_t lStamp);
+void vStampToTime(TimeType *ptypeTime, int64_t lStamp, float fUTC);
+int64_t lTimeToStamp(TimeType *ptypeTime);
+
+void vTimestampSet(int64_t lUNIXTimeStamp);
+int64_t lTimestampGet(void);
+
+void vTimeUTCSet(float cUTC);
+float fTimeUTCGet(void);
+
+char *pcTimeToStrings(int64_t lStamp);
 
 
 #endif
